@@ -28,6 +28,7 @@ fn main() -> io::Result<()> {
                  .help("The data to add to the cell")
                  .required(true)
                  .index(2)))
+
         // ... (rest of the code)
         .subcommand(SubCommand::with_name("show")
             .about("Displays the current state of the table"))
@@ -45,6 +46,7 @@ fn main() -> io::Result<()> {
             let cell = add_matches.value_of("CELL").unwrap();
             let data = add_matches.value_of("DATA").unwrap();
             add_data_to_table(table_name, cell, data)?;
+            add_calc_to_table(table_name, cell, data)?;
         },
         ("show", Some(_)) => {
             display_table(table_name)?;
@@ -146,5 +148,47 @@ fn display_table(file_name: &str) -> io::Result<()> {
         println!();
     }
     Ok(())
+}
+use std::str::FromStr;
+
+fn add_calc_to_table(file_name: &str, cell: &str, expression: &str) -> io::Result<()> {
+    let mut table = load_table(file_name)?;
+
+    // Function to parse and get value from a cell or direct number
+    let parse_value = |s: &str| -> i64 {
+        table.get(s.trim()).and_then(|v| v.parse::<i64>().ok()).unwrap_or_else(|| i64::from_str(s.trim()).unwrap_or(0))
+    };
+
+    // Identifying the operator and split the expression
+// ... (previous code)
+
+// Perform the operation based on the operator found in the expression
+    let (val1, val2, result): (i64, i64, Box<dyn Fn(i64, i64) -> i64>) = if let Some(idx) = expression.find('+') {
+        (parse_value(&expression[..idx]), parse_value(&expression[idx+1..]), Box::new(|a, b| a + b))
+    } else if let Some(idx) = expression.find('-') {
+        (parse_value(&expression[..idx]), parse_value(&expression[idx+1..]), Box::new(|a, b| a - b))
+    } else if let Some(idx) = expression.find('*') {
+        (parse_value(&expression[..idx]), parse_value(&expression[idx+1..]), Box::new(|a, b| a * b))
+    } else if let Some(idx) = expression.find('/') {
+    // Handle division
+        let left_operand = &expression[..idx];
+        let right_operand = &expression[idx + 1..];
+        let val1 = parse_value(left_operand);
+        let val2 = parse_value(right_operand);
+        (val1, val2, Box::new(|a, b| if b != 0 { a / b } else { 0 })) }   else if let Some(idx) = expression.find('%') {
+            (parse_value(&expression[..idx]), parse_value(&expression[idx+1..]), Box::new(|a, b| a % b))
+    }   else if let Some(idx) = expression.find('^') {
+        (parse_value(&expression[..idx]), parse_value(&expression[idx+1..]), Box::new(|a, b| a.pow(b as u32)))
+    } else {
+    // Default to direct assignment if no operator is found
+        (parse_value(expression), 0, Box::new(|a, _| a))
+    };
+
+// Perform calculation and store the result
+    let calculated_result = result(val1, val2);
+    table.insert(cell.to_string(), calculated_result.to_string());
+
+    save_table(file_name, &table)
+
 }
 
